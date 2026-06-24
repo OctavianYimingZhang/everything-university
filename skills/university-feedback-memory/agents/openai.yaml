@@ -1,0 +1,4 @@
+interface:
+  display_name: "University Feedback Memory"
+  short_description: "Collect tutor and marker feedback"
+  default_prompt: "Use $university-feedback-memory to collect tutor and TA feedback."

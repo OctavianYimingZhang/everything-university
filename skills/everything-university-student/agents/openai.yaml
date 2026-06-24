@@ -1,0 +1,4 @@
+interface:
+  display_name: "Everything University Student"
+  short_description: "Route student context collection"
+  default_prompt: "Use $everything-university-student to collect my current university course context."

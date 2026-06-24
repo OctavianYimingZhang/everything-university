@@ -1,0 +1,4 @@
+interface:
+  display_name: "University Automation"
+  short_description: "Configure recurring collection"
+  default_prompt: "Use $university-automation to configure recurring university collection."

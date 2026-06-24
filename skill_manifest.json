@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "skill_id": "everything-university",
+  "plugin_name": "everything-university",
+  "multi_skill_system": true,
+  "implemented_branch": "act_as_student",
+  "index_skill": "skills/everything-university-student/SKILL.md",
+  "memory_root_default": ".everything-university/memory",
+  "privacy_policy": "student_owned_local_memory_by_default",
+  "automation_policy": "explicit_user_configuration_required",
+  "focused_skills": [
+    {
+      "name": "everything-university-student",
+      "path": "skills/everything-university-student/SKILL.md",
+      "route": "act_as_student_router"
+    },
+    {
+      "name": "university-material-memory",
+      "path": "skills/university-material-memory/SKILL.md",
+      "route": "lecture_materials_recordings_transcripts"
+    },
+    {
+      "name": "university-timetable-memory",
+      "path": "skills/university-timetable-memory/SKILL.md",
+      "route": "timetable_units_calendar_deadlines"
+    },
+    {
+      "name": "university-announcement-memory",
+      "path": "skills/university-announcement-memory/SKILL.md",
+      "route": "announcements_messages_action_items"
+    },
+    {
+      "name": "university-feedback-memory",
+      "path": "skills/university-feedback-memory/SKILL.md",
+      "route": "tutor_ta_marker_feedback"
+    },
+    {
+      "name": "university-automation",
+      "path": "skills/university-automation/SKILL.md",
+      "route": "collection_automation_configuration"
+    }
+  ],
+  "memory_stores": [
+    "student/profile.json",
+    "student/source_access.json",
+    "courses/index.json",
+    "courses/<course_code>/materials/source_index.jsonl",
+    "courses/<course_code>/materials/lecture_materials.jsonl",
+    "courses/<course_code>/materials/recordings_transcripts.jsonl",
+    "courses/<course_code>/materials/readings.jsonl",
+    "courses/<course_code>/materials/assignments.jsonl",
+    "courses/<course_code>/schedule/timetable.jsonl",
+    "courses/<course_code>/schedule/unit_map.jsonl",
+    "courses/<course_code>/schedule/deadline_changes.jsonl",
+    "courses/<course_code>/communications/announcements.jsonl",
+    "courses/<course_code>/communications/action_items.jsonl",
+    "courses/<course_code>/feedback/tutor_ta_feedback.jsonl",
+    "collection_runs/runs.jsonl"
+  ],
+  "validation": {
+    "quick_skill_validate": "python3 /Users/octavianzhang/.codex/skills/.system/skill-creator/scripts/quick_validate.py <skill-path>",
+    "plugin_validate": "python3 /Users/octavianzhang/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py .",
+    "system_validate": "python3 scripts/validate_everything_university.py"
+  }
+}

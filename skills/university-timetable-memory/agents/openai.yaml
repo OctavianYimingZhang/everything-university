@@ -1,0 +1,4 @@
+interface:
+  display_name: "University Timetable Memory"
+  short_description: "Collect timetable and unit memory"
+  default_prompt: "Use $university-timetable-memory to update my course timetable and unit map."

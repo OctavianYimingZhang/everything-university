@@ -1,0 +1,4 @@
+interface:
+  display_name: "University Material Memory"
+  short_description: "Collect course materials memory"
+  default_prompt: "Use $university-material-memory to refresh lecture materials and transcripts."

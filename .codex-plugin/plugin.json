@@ -1,0 +1,21 @@
+{
+  "name": "everything-university",
+  "version": "0.1.0",
+  "description": "Multi-skill university operations plugin. The first implemented branch is Act as a student: collect LMS, timetable, announcement, lecture-material, transcript, and feedback information into separated memories for later academic execution.",
+  "author": {
+    "name": "Octavian Zhang"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Everything University",
+    "shortDescription": "Act-as-student university memory system.",
+    "longDescription": "Everything University coordinates focused Skills that collect and maintain university information from LMS portals, timetable sources, announcements, recordings, transcripts, and tutor feedback. It keeps memories separated by source and downstream use instead of writing one monolithic memory file.",
+    "developerName": "Octavian Zhang",
+    "category": "Productivity",
+    "capabilities": [
+      "skills",
+      "automation"
+    ],
+    "defaultPrompt": "Use Everything University to collect and organize my current university course context."
+  }
+}

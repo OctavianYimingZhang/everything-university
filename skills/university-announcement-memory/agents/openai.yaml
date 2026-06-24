@@ -1,0 +1,4 @@
+interface:
+  display_name: "University Announcement Memory"
+  short_description: "Collect announcements and actions"
+  default_prompt: "Use $university-announcement-memory to collect announcements and action items."

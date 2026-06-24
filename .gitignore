@@ -1,0 +1,4 @@
+.everything-university/
+*.log
+__pycache__/
+.DS_Store

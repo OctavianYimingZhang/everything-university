@@ -16,9 +16,10 @@ def test_capabilities_catalog() -> None:
     response = client.get("/api/capabilities")
     assert response.status_code == 200
     systems = {system["id"]: system for system in response.json()["systems"]}
-    assert {"memory", "coursework", "exam"} <= set(systems)
+    assert {"memory", "coursework", "exam", "daily"} <= set(systems)
     assert "website-plan" in systems["coursework"]["scenarios"]
     assert "exam_prep_notes" in systems["exam"]["routes"]
+    assert "daily_notes_generation" in systems["daily"]["routes"]
 
 
 def test_execute_rejects_unknown_kind() -> None:
@@ -31,6 +32,9 @@ def test_memory_init_summary_context_and_append(tmp_path: Path, monkeypatch) -> 
     init = client.post("/api/university/memory/init", json={"studentId": "student-test"})
     assert init.status_code == 200
     assert init.json()["status"] == "ok"
+    profile = json.loads((tmp_path / "memory" / "student" / "profile.json").read_text(encoding="utf-8"))
+    assert "institution" not in profile
+    assert "program" not in profile
 
     record = {
         "source": {"platform": "fixture", "url": "https://example.test/material"},
@@ -55,6 +59,36 @@ def test_memory_init_summary_context_and_append(tmp_path: Path, monkeypatch) -> 
     assert payload["course"] == "BIO101"
     assert payload["stores"]["lecture_materials"]["records"] == 1
     assert "untrusted evidence data" in payload["trust_boundary"]
+    assert "institution" not in payload["student_profile"]
+    assert "program" not in payload["student_profile"]
+
+    writing = client.post(
+        "/api/university/memory/append",
+        json={
+            "store": "writing_samples",
+            "record": {"source": {"platform": "fixture"}, "title": "Writing sample", "sample_text": "I prefer concise explanation."},
+        },
+    )
+    assert writing.status_code == 200
+
+    preference = client.post(
+        "/api/university/memory/append",
+        json={
+            "store": "notes_preferences",
+            "record": {"source": {"platform": "fixture"}, "title": "Notes preference", "preference_text": "Use lecture order."},
+        },
+    )
+    assert preference.status_code == 200
+
+    personalized = client.post(
+        "/api/university/memory/context",
+        json={"course": "BIO101", "taskKind": "daily", "selectedRoute": "daily_notes_generation", "userPrompt": "make daily notes"},
+    )
+    assert personalized.status_code == 200
+    personalized_payload = personalized.json()
+    assert personalized_payload["stores"]["writing_samples"]["records"] == 1
+    assert personalized_payload["stores"]["notes_preferences"]["records"] == 1
+    assert personalized_payload["notes_preferences"] == ["Use lecture order."]
 
 
 def test_memory_append_rejects_path_traversal(tmp_path: Path, monkeypatch) -> None:
@@ -134,3 +168,8 @@ def test_run_context_and_codex_handoff_shape(monkeypatch) -> None:
     handoff = client.post("/api/codex/handoff", json={"packet": packet})
     assert handoff.status_code == 200
     assert handoff.json()["status"] == "ready"
+
+    daily_packet = {**packet, "selectedSystem": "daily", "selectedRoute": "daily_notes_generation"}
+    daily_context = client.post("/api/run-context", json=daily_packet)
+    assert daily_context.status_code == 200
+    assert "daily_notes_generation" in daily_context.json()["codex_prompt"]

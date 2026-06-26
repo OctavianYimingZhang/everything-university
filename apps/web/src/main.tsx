@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import {
   Activity,
   BookOpen,
+  CalendarDays,
   CheckCircle2,
   ChevronRight,
   Database,
@@ -16,13 +17,23 @@ import {
   ShieldCheck,
   Sparkles,
   TerminalSquare,
+  UploadCloud,
 } from "lucide-react";
 import "./styles.css";
 
-type SystemId = "coursework" | "exam";
+type SystemId = "coursework" | "exam" | "daily";
 type SectionId = "workspace" | "sources" | "settings";
 type BridgeState = "checking" | "online" | "offline";
-type OutputState = "Idle" | "Refreshing memory" | "Memory ready" | "Plan ready" | "Review questions ready" | "Decision payload ready" | "Automation plan ready" | "Offline handoff";
+type OutputState =
+  | "Idle"
+  | "Refreshing memory"
+  | "Memory ready"
+  | "Memory updated"
+  | "Plan ready"
+  | "Review questions ready"
+  | "Decision payload ready"
+  | "Automation plan ready"
+  | "Offline handoff";
 
 type Decision = {
   id: string;
@@ -60,13 +71,20 @@ type MemoryContext = {
   };
   stores?: Record<string, MemoryStore>;
   writing_style_signals?: string[];
+  notes_preferences?: string[];
+  teaching_memory_signals?: {
+    lecture_material_records?: number;
+    transcript_records?: number;
+    lecture_gap_records?: number;
+    writing_sample_records?: number;
+    notes_preference_records?: number;
+  };
   trust_boundary?: string;
   summary?: {
     initialized?: boolean;
     student?: {
-      institution?: string;
-      program?: string;
       student_id_present?: boolean;
+      profile_notes_present?: boolean;
     };
     source_access?: {
       lms?: string;
@@ -76,6 +94,16 @@ type MemoryContext = {
     stores?: Record<string, MemoryStore>;
     missing_stores?: string[];
   };
+};
+
+type SourceUpload = {
+  id: string;
+  role: SourceRoleId;
+  name: string;
+  size: number;
+  kind: string;
+  contentHint: string;
+  preview: string;
 };
 
 type CodexState = {
@@ -94,13 +122,21 @@ const query = new URLSearchParams(window.location.search);
 const bridgeUrl = query.get("codex_bridge") || import.meta.env.VITE_CODEX_BRIDGE || "http://127.0.0.1:8787";
 
 const sourceRoleLabels = [
-  ["lecture_materials", "Lecture materials"],
-  ["recordings_transcripts", "Recordings / transcripts"],
+  ["lecture_materials", "Lecture slides / materials"],
+  ["recordings_transcripts", "Transcripts / recordings"],
   ["assignments", "Assignment briefs"],
   ["readings", "Readings"],
+] as const;
+
+type SourceRoleId = (typeof sourceRoleLabels)[number][0];
+
+const memoryGenerationLabels = [
   ["timetable", "Timetable"],
   ["announcements", "Announcements"],
   ["feedback", "Tutor / marker feedback"],
+  ["lecture_gap_notes", "Slide-transcript gaps"],
+  ["writing_samples", "Writing samples"],
+  ["notes_preferences", "Notes preferences"],
 ] as const;
 
 const tasks: Task[] = [
@@ -325,6 +361,72 @@ const tasks: Task[] = [
     ],
   },
   {
+    id: "daily-notes",
+    system: "daily",
+    title: "Daily Notes Generation",
+    route: "daily_notes_generation",
+    intent: "Generate day-to-day teaching notes from lecture slides, transcripts, timetable context, and stored preferences.",
+    primaryAction: "Prepare Daily Notes",
+    material: "Lecture slides, transcripts, timetable",
+    output: "Daily teaching notes plan",
+    decisions: [
+      decision("daily_scope", "Daily scope", "Choose the daily notes scope.", [
+        "Today and next class",
+        "This teaching week",
+        "Selected uploaded sources",
+      ]),
+      decision("notes_preference", "Notes preference", "Choose the notes style.", [
+        "Explanation-first teaching notes",
+        "Condensed study notes",
+        "Slides plus spoken additions",
+      ]),
+    ],
+  },
+  {
+    id: "daily-timetable",
+    system: "daily",
+    title: "Timetable Review",
+    route: "timetable_review",
+    intent: "Turn timetable, deadlines, and announcements into an actionable study schedule.",
+    primaryAction: "Prepare Timetable Plan",
+    material: "Timetable, announcements, deadlines",
+    output: "Study schedule plan",
+    decisions: [
+      decision("schedule_window", "Schedule window", "Choose the schedule window.", [
+        "Next 7 days",
+        "Next 3 days",
+        "This module only",
+      ]),
+      decision("study_output", "Output", "Choose the schedule output.", [
+        "Action list with priorities",
+        "Calendar-style plan",
+        "Deadline risk review",
+      ]),
+    ],
+  },
+  {
+    id: "daily-lecture-gaps",
+    system: "daily",
+    title: "Lecture Gap Notes",
+    route: "lecture_gap_notes",
+    intent: "Track what the lecturer said beyond the slides and preserve it for future notes and exam work.",
+    primaryAction: "Prepare Gap Memory",
+    material: "Lecture slides plus transcripts",
+    output: "Slide-transcript gap memory",
+    decisions: [
+      decision("gap_focus", "Gap focus", "Choose what to capture.", [
+        "Teacher-only explanations",
+        "Examples not on slides",
+        "Exam hints and emphasis",
+      ]),
+      decision("gap_output", "Output", "Choose how the gaps should be used.", [
+        "Update memory and generate notes",
+        "Update memory only",
+        "Make a comparison report",
+      ]),
+    ],
+  },
+  {
     id: "cw-essay",
     system: "coursework",
     title: "Write an Essay / Report",
@@ -351,7 +453,7 @@ const tasks: Task[] = [
     system: "coursework",
     title: "Interactive Website Coursework",
     route: "website-plan",
-    intent: "Prepare the website coursework gate with source roles and memory context.",
+    intent: "Prepare the website coursework gate with uploaded source context and memory signals.",
     primaryAction: "Prepare Coursework Gate",
     material: "Brief, rubric, assets",
     output: "Decision gate",
@@ -378,7 +480,7 @@ const tasks: Task[] = [
     system: "coursework",
     title: "Lab Analysis",
     route: "lab-analysis",
-    intent: "Route data-supported coursework with analysis tool and source-role decisions.",
+    intent: "Route data-supported coursework with analysis tool and source decisions.",
     primaryAction: "Prepare Coursework Gate",
     material: "Dataset, method, rubric",
     output: "Analysis gate",
@@ -400,7 +502,7 @@ const tasks: Task[] = [
     system: "coursework",
     title: "Poster Plan",
     route: "poster-plan",
-    intent: "Prepare an academic poster plan with message hierarchy and visual source roles.",
+    intent: "Prepare an academic poster plan with message hierarchy and source evidence.",
     primaryAction: "Prepare Coursework Gate",
     material: "Poster brief, figures, rubric",
     output: "Poster structure",
@@ -571,10 +673,11 @@ function App() {
     recordings_transcripts: true,
     assignments: true,
     readings: false,
-    timetable: true,
-    announcements: true,
-    feedback: true,
   });
+  const [uploadRole, setUploadRole] = React.useState<SourceRoleId>("lecture_materials");
+  const [uploadedSources, setUploadedSources] = React.useState<SourceUpload[]>([]);
+  const [writingSample, setWritingSample] = React.useState("");
+  const [notesPreference, setNotesPreference] = React.useState("");
   const [outputs, setOutputs] = React.useState<string[]>(["Bridge check pending"]);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const [advancedExport, setAdvancedExport] = React.useState("");
@@ -705,6 +808,26 @@ function App() {
         setOutputs(["Exam Prep review plan ready", `${count} review decision groups prepared`, "Run with Codex to continue with confirmed course memory"]);
         await buildRunContext({ plan, review });
       }
+
+      if (selectedTask.system === "daily") {
+        const context = await fetchJson(`${bridgeUrl}/api/university/memory/context`, {
+          method: "POST",
+          body: JSON.stringify({
+            course,
+            taskKind: "daily",
+            selectedRoute: selectedTask.route,
+            userPrompt: prompt,
+          }),
+        });
+        setMemory(context);
+        setOutputState("Plan ready");
+        setOutputs([
+          "Daily notes memory context ready",
+          `${context.readiness?.score ?? 0}/${context.readiness?.total ?? 5} memory areas populated`,
+          "Run with Codex to generate the daily notes or timetable plan",
+        ]);
+        await buildRunContext({ context, selected_decisions: decisions, source_roles: sourceRoles });
+      }
     } catch {
       const offlinePacket = offlineRunContext(selectedTask, course, decisions, sourceRoles, memoryContext, prompt);
       setBridge("offline");
@@ -735,6 +858,128 @@ function App() {
       setBridge("offline");
       setOutputState("Offline handoff");
       setOutputs(["Collection plan needs the local bridge", "Settings still preserve the selected memory scope"]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSourceFiles(files: FileList | null) {
+    if (!files?.length) return;
+    const nextSources = await Promise.all(
+      Array.from(files).map(async (file) => {
+        const preview = await readFilePreview(file);
+        return {
+          id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(16).slice(2)}`,
+          role: uploadRole,
+          name: file.name,
+          size: file.size,
+          kind: detectFileKind(file.name, file.type),
+          contentHint: sourceContentHint(uploadRole, file.name, file.type),
+          preview,
+        };
+      }),
+    );
+    setUploadedSources((current) => [...nextSources, ...current]);
+    setOutputState("Memory ready");
+    setOutputs([`${nextSources.length} source file${nextSources.length === 1 ? "" : "s"} staged`, "Review the detected contents before writing memory"]);
+  }
+
+  function updateUploadedSourceRole(id: string, role: SourceRoleId) {
+    setUploadedSources((current) => current.map((source) => (source.id === id ? { ...source, role, contentHint: sourceContentHint(role, source.name, source.kind) } : source)));
+  }
+
+  async function saveUploadedSources() {
+    if (!uploadedSources.length) {
+      setOutputs(["No uploaded sources staged", "Choose lecture slides, transcripts, assignments, or readings first"]);
+      return;
+    }
+    if (!course.trim()) {
+      setOutputs(["Course / module is required before writing source memory", "The staged source inventory remains visible on this page"]);
+      return;
+    }
+    setBusy(true);
+    try {
+      for (const source of uploadedSources) {
+        await fetchJson(`${bridgeUrl}/api/university/memory/append`, {
+          method: "POST",
+          body: JSON.stringify({
+            store: source.role,
+            course,
+            record: {
+              source: {
+                platform: "browser_upload",
+                access_mode: "user_supplied",
+                file_name: source.name,
+              },
+              title: source.name,
+              material_type: materialTypeForRole(source.role),
+              file_size_bytes: source.size,
+              content_hint: source.contentHint,
+              browser_preview: source.preview,
+            },
+          }),
+        });
+      }
+      setBridge("online");
+      setOutputState("Memory updated");
+      setOutputs([`${uploadedSources.length} source record${uploadedSources.length === 1 ? "" : "s"} written`, "Refresh Memory to reload source counts"]);
+      void refreshMemory(false);
+    } catch {
+      setBridge("offline");
+      setOutputState("Offline handoff");
+      setOutputs(["Source memory write needs the local bridge", "The upload inventory remains staged in the browser"]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateWritingMemory() {
+    const sample = writingSample.trim();
+    const preference = notesPreference.trim();
+    if (!sample && !preference) {
+      setOutputs(["No writing memory input", "Paste a writing sample or notes preference first"]);
+      return;
+    }
+    setBusy(true);
+    try {
+      if (sample) {
+        await fetchJson(`${bridgeUrl}/api/university/memory/append`, {
+          method: "POST",
+          body: JSON.stringify({
+            store: "writing_samples",
+            record: {
+              source: { platform: "browser_form", access_mode: "user_supplied" },
+              title: "User writing sample",
+              sample_text: sample,
+              signal_type: "writing_style",
+            },
+          }),
+        });
+      }
+      if (preference) {
+        await fetchJson(`${bridgeUrl}/api/university/memory/append`, {
+          method: "POST",
+          body: JSON.stringify({
+            store: "notes_preferences",
+            record: {
+              source: { platform: "browser_form", access_mode: "user_supplied" },
+              title: "Notes preference",
+              preference_text: preference,
+              signal_type: "notes_preference",
+            },
+          }),
+        });
+      }
+      setWritingSample("");
+      setNotesPreference("");
+      setBridge("online");
+      setOutputState("Memory updated");
+      setOutputs(["Writing and notes preference memory updated", "Refresh Memory to reload personalized signals"]);
+      void refreshMemory(false);
+    } catch {
+      setBridge("offline");
+      setOutputState("Offline handoff");
+      setOutputs(["Writing memory update needs the local bridge", "The form content is still visible for retry"]);
     } finally {
       setBusy(false);
     }
@@ -821,8 +1066,6 @@ function App() {
               setPrompt={setPrompt}
               decisions={decisions}
               setDecision={(id, value) => setDecisions((current) => ({ ...current, [id]: value }))}
-              sourceRoles={sourceRoles}
-              toggleSource={(id) => setSourceRoles((current) => ({ ...current, [id]: !current[id] }))}
               outputState={outputState}
               outputs={outputs}
               busy={busy}
@@ -834,8 +1077,15 @@ function App() {
             <SourcesView
               sourceRoles={sourceRoles}
               toggleSource={(id) => setSourceRoles((current) => ({ ...current, [id]: !current[id] }))}
+              uploadRole={uploadRole}
+              setUploadRole={setUploadRole}
+              uploadedSources={uploadedSources}
+              onFiles={handleSourceFiles}
+              onSourceRole={updateUploadedSourceRole}
+              onSaveSources={saveUploadedSources}
               memory={memory}
               course={course}
+              busy={busy}
             />
           )}
           {activeSection === "settings" && (
@@ -851,6 +1101,11 @@ function App() {
               onConnect={connectCodex}
               onRefreshMemory={() => refreshMemory(true)}
               onBuildCollectionPlan={buildCollectionPlan}
+              writingSample={writingSample}
+              setWritingSample={setWritingSample}
+              notesPreference={notesPreference}
+              setNotesPreference={setNotesPreference}
+              onUpdateWritingMemory={updateWritingMemory}
             />
           )}
         </main>
@@ -967,6 +1222,10 @@ function LeftRail({
             <FileText aria-hidden="true" />
             <span>Coursework</span>
           </button>
+          <button className={system === "daily" ? "selected" : ""} onClick={() => setSystem("daily")}>
+            <CalendarDays aria-hidden="true" />
+            <span>Daily Notes</span>
+          </button>
         </div>
       </section>
 
@@ -998,8 +1257,6 @@ function TaskWorkspace({
   setPrompt,
   decisions,
   setDecision,
-  sourceRoles,
-  toggleSource,
   outputState,
   outputs,
   busy,
@@ -1012,8 +1269,6 @@ function TaskWorkspace({
   setPrompt: (prompt: string) => void;
   decisions: Record<string, string>;
   setDecision: (id: string, value: string) => void;
-  sourceRoles: Record<string, boolean>;
-  toggleSource: (id: string) => void;
   outputState: OutputState;
   outputs: string[];
   busy: boolean;
@@ -1035,7 +1290,7 @@ function TaskWorkspace({
         </div>
       </section>
 
-      <div className="work-grid">
+      <div className="work-grid single-panel">
         <section className="operation-panel">
           <div className="panel-heading">
             <span className="section-kicker">Current Operation</span>
@@ -1055,20 +1310,9 @@ function TaskWorkspace({
             placeholder="Describe what you want the agent to do for this task."
             onChange={(event) => setPrompt(event.target.value)}
           />
-        </section>
-
-        <section className="operation-panel compact">
-          <div className="panel-heading">
-            <span className="section-kicker">Source roles</span>
+          <div className="operation-note">
             <ShieldCheck aria-hidden="true" />
-          </div>
-          <div className="source-checks compact-grid">
-            {sourceRoleLabels.map(([id, label]) => (
-              <button key={id} className={sourceRoles[id] ? "source-toggle active" : "source-toggle"} onClick={() => toggleSource(id)}>
-                <CheckCircle2 aria-hidden="true" />
-                {label}
-              </button>
-            ))}
+            <span>Upload and inspect lecture slides, transcripts, assignments, and readings from the Sources page.</span>
           </div>
         </section>
       </div>
@@ -1132,29 +1376,100 @@ function DecisionCard({ decision, value, onChange }: { decision: Decision; value
 function SourcesView({
   sourceRoles,
   toggleSource,
+  uploadRole,
+  setUploadRole,
+  uploadedSources,
+  onFiles,
+  onSourceRole,
+  onSaveSources,
   memory,
   course,
+  busy,
 }: {
   sourceRoles: Record<string, boolean>;
   toggleSource: (id: string) => void;
+  uploadRole: SourceRoleId;
+  setUploadRole: (id: SourceRoleId) => void;
+  uploadedSources: SourceUpload[];
+  onFiles: (files: FileList | null) => void;
+  onSourceRole: (id: string, role: SourceRoleId) => void;
+  onSaveSources: () => void;
   memory: MemoryContext;
   course: string;
+  busy: boolean;
 }) {
   return (
     <div className="workspace-inner">
       <section className="command-header">
         <div>
-          <h1>Source Control</h1>
-          <p>Choose which stored university sources can inform the next Coursework or Exam Prep run.</p>
+          <h1>Upload Sources</h1>
+          <p>Stage lecture slides, transcripts, assignment briefs, and readings, then write their source records into local memory.</p>
         </div>
+        <button className="primary-button" disabled={busy || !uploadedSources.length} onClick={onSaveSources}>
+          <Database aria-hidden="true" />
+          Write Source Memory
+        </button>
       </section>
+      <div className="source-upload-grid">
+        <section className="operation-panel upload-panel">
+          <div className="panel-heading">
+            <div>
+              <span className="section-kicker">Upload</span>
+              <h2>Source intake</h2>
+            </div>
+            <UploadCloud aria-hidden="true" />
+          </div>
+          <div className="upload-role-grid" role="group" aria-label="Upload source type">
+            {sourceRoleLabels.map(([id, label]) => (
+              <button key={id} className={uploadRole === id ? "choice selected" : "choice"} onClick={() => setUploadRole(id)}>
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+          <label className="upload-drop" htmlFor="source-upload">
+            <UploadCloud aria-hidden="true" />
+            <strong>Choose files</strong>
+            <span>PDF, PPTX, DOCX, TXT, VTT, SRT, images, or exports. The browser shows metadata and text previews when available.</span>
+          </label>
+          <input id="source-upload" className="file-input" type="file" multiple onChange={(event) => onFiles(event.currentTarget.files)} />
+        </section>
+
+        <section className="operation-panel upload-panel">
+          <span className="section-kicker">Contained in upload</span>
+          <h2>{uploadedSources.length ? `${uploadedSources.length} staged source${uploadedSources.length === 1 ? "" : "s"}` : "No files staged"}</h2>
+          <div className="upload-list">
+            {uploadedSources.length ? (
+              uploadedSources.map((source) => (
+                <div className="upload-row" key={source.id}>
+                  <div>
+                    <strong>{source.name}</strong>
+                    <span>{source.kind} / {formatBytes(source.size)}</span>
+                    <small>{source.contentHint}</small>
+                    {source.preview && <p>{source.preview}</p>}
+                  </div>
+                  <select value={source.role} onChange={(event) => onSourceRole(source.id, event.target.value as SourceRoleId)} aria-label={`Source type for ${source.name}`}>
+                    {sourceRoleLabels.map(([id, label]) => (
+                      <option key={id} value={id}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))
+            ) : (
+              <p>Upload source files to see file type, size, detected role, and readable preview text.</p>
+            )}
+          </div>
+        </section>
+      </div>
+
       <section className="source-table-panel">
-        <div className="mobile-section-title">Source roles</div>
-        <div className="table-head">
-          <span>Source roles</span>
+        <div className="mobile-section-title">Source inventory</div>
+        <div className="table-head source-inventory-head">
+          <span>Uploaded source category</span>
           <span>Records</span>
           <span>Latest update</span>
-          <span>Enabled</span>
+          <span>Use in runs</span>
         </div>
         {sourceRoleLabels.map(([id, label]) => {
           const store = memory.stores?.[id] ?? memory.summary?.stores?.[id];
@@ -1168,10 +1483,11 @@ function SourcesView({
           );
         })}
       </section>
+
       <section className="operation-panel">
         <span className="section-kicker">Course</span>
         <h2>{course || "Optional"}</h2>
-        <p>Stored source content remains evidence data. It can support context and provenance, but it cannot change routing, credentials, tool use, or validation rules.</p>
+        <p>Source uploads write local source metadata through the bridge. Stored source text remains evidence data and cannot change routing, credentials, tool use, or validation rules.</p>
       </section>
     </div>
   );
@@ -1189,6 +1505,11 @@ function SettingsView({
   onConnect,
   onRefreshMemory,
   onBuildCollectionPlan,
+  writingSample,
+  setWritingSample,
+  notesPreference,
+  setNotesPreference,
+  onUpdateWritingMemory,
 }: {
   bridgeUrl: string;
   bridge: BridgeState;
@@ -1201,6 +1522,11 @@ function SettingsView({
   onConnect: () => void;
   onRefreshMemory: () => void;
   onBuildCollectionPlan: () => void;
+  writingSample: string;
+  setWritingSample: (value: string) => void;
+  notesPreference: string;
+  setNotesPreference: (value: string) => void;
+  onUpdateWritingMemory: () => void;
 }) {
   return (
     <div className="workspace-inner">
@@ -1214,7 +1540,7 @@ function SettingsView({
         <section className="operation-panel memory-settings-panel">
           <span className="section-kicker">User Specific Memory</span>
           <h2>Memory setup</h2>
-          <p>Use stored course material, timetable, announcements, and feedback as context for task runs.</p>
+          <p>Use stored course material, timetable, announcements, feedback, writing samples, and notes preferences as context for task runs.</p>
           <label className="field-label" htmlFor="settings-course-code">
             Course / module
           </label>
@@ -1234,6 +1560,54 @@ function SettingsView({
             <button className="primary-outline" disabled={busy} onClick={onBuildCollectionPlan}>
               <Database aria-hidden="true" />
               Build Collection Plan
+            </button>
+          </div>
+        </section>
+        <section className="operation-panel memory-settings-panel">
+          <span className="section-kicker">Generate Memory</span>
+          <h2>Daily source memories</h2>
+          <p>These stores support memory generation rather than normal source upload selection.</p>
+          <div className="memory-store-grid">
+            {memoryGenerationLabels.map(([id, label]) => {
+              const store = memory.stores?.[id] ?? memory.summary?.stores?.[id];
+              return (
+                <div className={(store?.records ?? 0) > 0 ? "memory-store-card active" : "memory-store-card"} key={id}>
+                  <strong>{label}</strong>
+                  <span>{store?.records ?? 0} records</span>
+                  <small>{formatDate(store?.latest_observed_at)}</small>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+        <section className="operation-panel memory-settings-panel">
+          <span className="section-kicker">Writing Memory</span>
+          <h2>Writing style and notes preferences</h2>
+          <p>Paste your own writing and notes preferences so future runs can match your style and preferred explanation format.</p>
+          <div className="writing-memory-grid">
+            <label>
+              <span className="field-label">Writing sample</span>
+              <textarea
+                value={writingSample}
+                placeholder="Paste a paragraph or previous answer you wrote."
+                onChange={(event) => setWritingSample(event.target.value)}
+                aria-label="Writing sample"
+              />
+            </label>
+            <label>
+              <span className="field-label">Notes preference</span>
+              <textarea
+                value={notesPreference}
+                placeholder="Describe how you want notes to be structured, detailed, or condensed."
+                onChange={(event) => setNotesPreference(event.target.value)}
+                aria-label="Notes preference"
+              />
+            </label>
+          </div>
+          <div className="settings-actions">
+            <button className="primary-outline" disabled={busy} onClick={onUpdateWritingMemory}>
+              <Database aria-hidden="true" />
+              Update Writing Memory
             </button>
           </div>
         </section>
@@ -1298,7 +1672,7 @@ function Inspector({
       <section>
         <h3>Selected task</h3>
         <InfoPair label="Task" value={task.title} />
-        <InfoPair label="Family" value={task.system === "exam" ? "Exam Prep" : "Coursework"} />
+        <InfoPair label="Family" value={familyLabel(task.system)} />
         <InfoPair label="Course" value={course || "Optional"} />
         <InfoPair label="Memory" value={`${memory.readiness?.score ?? 0}/${memory.readiness?.total ?? 5}`} />
       </section>
@@ -1316,7 +1690,7 @@ function Inspector({
           {(memory.writing_style_signals ?? []).length ? (
             memory.writing_style_signals?.slice(0, 3).map((signal) => <p key={signal}>{signal}</p>)
           ) : (
-            <p>No stored feedback yet.</p>
+            <p>No stored writing sample or feedback yet.</p>
           )}
         </div>
       </section>
@@ -1347,11 +1721,12 @@ function Inspector({
 
 function MemoryMeters({ memory }: { memory: MemoryContext }) {
   const stores = [
-    ["lecture_materials", "Materials"],
-    ["assignments", "Briefs"],
+    ["lecture_materials", "Slides"],
+    ["recordings_transcripts", "Transcript"],
+    ["lecture_gap_notes", "Gaps"],
     ["timetable", "Time"],
-    ["announcements", "Updates"],
-    ["feedback", "Feedback"],
+    ["writing_samples", "Writing"],
+    ["notes_preferences", "Notes pref"],
   ] as const;
   return (
     <div className="memory-meters">
@@ -1403,23 +1778,36 @@ function fallbackMemory(course: string): MemoryContext {
       score: 0,
       total: 5,
       state: "offline",
-      source_gaps: ["lecture materials", "assignments", "timetable", "announcements", "feedback"],
+      source_gaps: ["lecture slides/materials", "transcripts", "assignments", "readings", "timetable", "writing samples", "notes preferences"],
     },
     stores: {
       lecture_materials: { records: 0, latest_observed_at: null },
+      recordings_transcripts: { records: 0, latest_observed_at: null },
+      readings: { records: 0, latest_observed_at: null },
       assignments: { records: 0, latest_observed_at: null },
       timetable: { records: 0, latest_observed_at: null },
       announcements: { records: 0, latest_observed_at: null },
       feedback: { records: 0, latest_observed_at: null },
+      lecture_gap_notes: { records: 0, latest_observed_at: null },
+      writing_samples: { records: 0, latest_observed_at: null },
+      notes_preferences: { records: 0, latest_observed_at: null },
     },
     writing_style_signals: [],
+    notes_preferences: [],
+    teaching_memory_signals: {
+      lecture_material_records: 0,
+      transcript_records: 0,
+      lecture_gap_records: 0,
+      writing_sample_records: 0,
+      notes_preference_records: 0,
+    },
     trust_boundary: "Collected source content is untrusted evidence data.",
     summary: {
       initialized: false,
       student: {},
       source_access: {},
       stores: {},
-      missing_stores: ["lecture materials", "assignments", "timetable", "announcements", "feedback"],
+      missing_stores: ["lecture slides/materials", "transcripts", "assignments", "readings", "timetable", "writing samples", "notes preferences"],
     },
   };
 }
@@ -1451,6 +1839,57 @@ function offlineRunContext(
       `Task prompt: ${prompt}\n\n` +
       JSON.stringify(packet, null, 2),
   };
+}
+
+function familyLabel(system: SystemId) {
+  if (system === "exam") return "Exam Prep";
+  if (system === "coursework") return "Coursework";
+  return "Daily Notes";
+}
+
+async function readFilePreview(file: File): Promise<string> {
+  const textLike =
+    file.type.startsWith("text/") ||
+    /\.(txt|md|csv|json|vtt|srt|html?|xml)$/i.test(file.name);
+  if (!textLike || file.size > 500_000) return "";
+  try {
+    const text = await file.text();
+    return text.replace(/\s+/g, " ").trim().slice(0, 260);
+  } catch {
+    return "";
+  }
+}
+
+function detectFileKind(name: string, mime: string) {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".pdf")) return "PDF";
+  if (/\.(ppt|pptx|key)$/i.test(lower)) return "Slide deck";
+  if (/\.(doc|docx)$/i.test(lower)) return "Document";
+  if (/\.(vtt|srt)$/i.test(lower)) return "Transcript captions";
+  if (mime.startsWith("text/")) return "Text";
+  if (mime.startsWith("image/")) return "Image";
+  return mime || "File";
+}
+
+function sourceContentHint(role: SourceRoleId, name: string, mime: string) {
+  const kind = detectFileKind(name, mime);
+  if (role === "lecture_materials") return `${kind}; expected to contain slides, lecture notes, module pages, or source visuals.`;
+  if (role === "recordings_transcripts") return `${kind}; expected to contain spoken lecture content, captions, or transcript text.`;
+  if (role === "assignments") return `${kind}; expected to contain assignment brief, rubric, marking criteria, or submission instructions.`;
+  return `${kind}; expected to contain required or optional course reading material.`;
+}
+
+function materialTypeForRole(role: SourceRoleId) {
+  if (role === "lecture_materials") return "slide_deck";
+  if (role === "recordings_transcripts") return "transcript";
+  if (role === "assignments") return "assignment_brief";
+  return "reading";
+}
+
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function bridgeLabel(bridge: BridgeState) {

@@ -17,12 +17,15 @@ STORE_PATHS = {
     "recordings_transcripts": "courses/{course}/materials/recordings_transcripts.jsonl",
     "readings": "courses/{course}/materials/readings.jsonl",
     "assignments": "courses/{course}/materials/assignments.jsonl",
+    "lecture_gap_notes": "courses/{course}/materials/lecture_gap_notes.jsonl",
     "timetable": "courses/{course}/schedule/timetable.jsonl",
     "unit_map": "courses/{course}/schedule/unit_map.jsonl",
     "deadline_changes": "courses/{course}/schedule/deadline_changes.jsonl",
     "announcements": "courses/{course}/communications/announcements.jsonl",
     "action_items": "courses/{course}/communications/action_items.jsonl",
     "feedback": "courses/{course}/feedback/tutor_ta_feedback.jsonl",
+    "writing_samples": "student/writing_style/writing_samples.jsonl",
+    "notes_preferences": "student/preferences/notes_preferences.jsonl",
     "runs": "collection_runs/runs.jsonl",
 }
 
@@ -38,12 +41,15 @@ REQUIRED_FIELDS = {
     "recordings_transcripts": ("id", "observed_at", "source", "title"),
     "readings": ("id", "observed_at", "source", "title"),
     "assignments": ("id", "observed_at", "source", "title"),
+    "lecture_gap_notes": ("id", "observed_at", "source", "title"),
     "timetable": ("id", "observed_at", "source", "starts_at", "title"),
     "unit_map": ("id", "observed_at", "source", "unit_title"),
     "deadline_changes": ("id", "observed_at", "source", "title"),
     "announcements": ("id", "observed_at", "source", "title"),
     "action_items": ("id", "observed_at", "source", "title"),
     "feedback": ("id", "observed_at", "source", "feedback_text"),
+    "writing_samples": ("id", "observed_at", "source", "title", "sample_text"),
+    "notes_preferences": ("id", "observed_at", "source", "title", "preference_text"),
     "runs": ("id", "observed_at", "source", "status"),
 }
 
@@ -55,6 +61,25 @@ def utc_now() -> str:
 def stable_id(payload: dict[str, Any]) -> str:
     source = json.dumps(payload, sort_keys=True, ensure_ascii=True)
     return hashlib.sha256(source.encode("utf-8")).hexdigest()[:16]
+
+
+def validate_course_code(course: str) -> str:
+    if not course or course != course.strip():
+        raise SystemExit("--course must be a non-empty path-safe course code")
+    if course in {".", ".."} or "/" in course or "\\" in course:
+        raise SystemExit("--course must be a single path segment")
+    if Path(course).is_absolute() or any(ord(char) < 32 for char in course):
+        raise SystemExit("--course must be a safe relative path segment")
+    return course
+
+
+def contained_path(root: Path, relative_path: str) -> Path:
+    path = root / relative_path
+    try:
+        path.resolve().relative_to(root.resolve())
+    except ValueError as exc:
+        raise SystemExit(f"Store path escapes memory root: {path}") from exc
+    return path
 
 
 def json_load(path: Path, default: Any) -> Any:
@@ -75,8 +100,8 @@ def store_path(root: Path, store: str, course: str | None = None) -> Path:
     if "{course}" in template:
         if not course:
             raise SystemExit(f"--course is required for store {store}")
-        template = template.format(course=course)
-    return root / template
+        template = template.format(course=validate_course_code(course))
+    return contained_path(root, template)
 
 
 def init_memory(root: Path, student_id: str | None) -> None:
@@ -92,9 +117,7 @@ def init_memory(root: Path, student_id: str | None) -> None:
             {
                 "student_id": student_id or "",
                 "created_at": utc_now(),
-                "institution": "",
-                "program": "",
-                "notes": "Local student-owned profile. Do not store passwords.",
+                "notes": "",
             },
         )
     if not source_access_path.exists():
@@ -114,10 +137,14 @@ def init_memory(root: Path, student_id: str | None) -> None:
 
 def append_record(root: Path, store: str, course: str | None, record: dict[str, Any]) -> Path:
     record = dict(record)
+    if course:
+        course = validate_course_code(course)
+        existing_course = record.get("course_code")
+        if existing_course not in (None, "", course):
+            raise SystemExit("--record-json course_code must match --course")
+        record["course_code"] = course
     record.setdefault("observed_at", utc_now())
     record.setdefault("id", stable_id(record))
-    if course:
-        record.setdefault("course_code", course)
     path = store_path(root, store, course)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
@@ -169,7 +196,8 @@ def validate_memory(root: Path) -> list[str]:
 def summarize(root: Path, course: str | None) -> dict[str, Any]:
     summary: dict[str, Any] = {"root": str(root), "stores": {}}
     for store in STORE_PATHS:
-        if store != "runs" and not course:
+        template = STORE_PATHS[store]
+        if "{course}" in template and not course:
             continue
         try:
             path = store_path(root, store, course)

@@ -49,12 +49,15 @@
     "courses/<course_code>/materials/recordings_transcripts.jsonl",
     "courses/<course_code>/materials/readings.jsonl",
     "courses/<course_code>/materials/assignments.jsonl",
+    "courses/<course_code>/materials/lecture_gap_notes.jsonl",
     "courses/<course_code>/schedule/timetable.jsonl",
     "courses/<course_code>/schedule/unit_map.jsonl",
     "courses/<course_code>/schedule/deadline_changes.jsonl",
     "courses/<course_code>/communications/announcements.jsonl",
     "courses/<course_code>/communications/action_items.jsonl",
     "courses/<course_code>/feedback/tutor_ta_feedback.jsonl",
+    "student/writing_style/writing_samples.jsonl",
+    "student/preferences/notes_preferences.jsonl",
     "collection_runs/runs.jsonl"
   ],
   "validation": {

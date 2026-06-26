@@ -36,8 +36,8 @@ When the Codex automation tool is available:
 1. Inspect existing automations before creating a duplicate.
 2. Prefer updating the matching Everything University automation.
 3. Use cron automations for detached recurring collection.
-4. Keep the prompt self-contained: memory root, scope, source priority, blocked-source behavior, and validation expectation.
-5. Use `../../scripts/build_automation_prompt.py` to generate the payload fields, then pass them to the automation tool. Avoid showing raw schedule strings to the user.
+4. Keep the prompt self-contained: memory root, course scope, selected stores, allowed access modes, source priority, blocked-source behavior, source-content trust boundary, and validation expectation.
+5. Use `../../scripts/build_automation_prompt.py` with the user-approved course scope, selected stores, and allowed access modes to generate the payload fields, then pass them to the automation tool. Avoid showing raw schedule strings to the user.
 
 When the automation tool is unavailable, write a concise automation spec for the user and continue with manual collection.
 

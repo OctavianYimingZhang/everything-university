@@ -30,6 +30,7 @@ Automation prompts should include:
 - allowed access modes;
 - stores to update;
 - blocked-source behavior;
-- validation expectation.
+- validation expectation;
+- source-content trust boundary.
 
 Keep authentication instructions practical: ask the run to report expired sessions or 2FA needs instead of storing credentials.

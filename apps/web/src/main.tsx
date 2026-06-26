@@ -5,7 +5,6 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronRight,
-  Clock3,
   Database,
   FileText,
   GraduationCap,
@@ -14,14 +13,13 @@ import {
   Play,
   RefreshCcw,
   Server,
-  Settings2,
   ShieldCheck,
   Sparkles,
   TerminalSquare,
 } from "lucide-react";
 import "./styles.css";
 
-type SystemId = "memory" | "coursework" | "exam";
+type SystemId = "coursework" | "exam";
 type SectionId = "workspace" | "sources" | "settings";
 type BridgeState = "checking" | "online" | "offline";
 type OutputState = "Idle" | "Refreshing memory" | "Memory ready" | "Plan ready" | "Review questions ready" | "Decision payload ready" | "Automation plan ready" | "Offline handoff";
@@ -107,46 +105,244 @@ const sourceRoleLabels = [
 
 const tasks: Task[] = [
   {
-    id: "memory-context",
-    system: "memory",
-    title: "Build User Memory Context",
-    route: "memory_context",
-    intent: "Summarize course memory before academic execution.",
-    primaryAction: "Build Memory Context",
-    material: "Separated local memory",
-    output: "Memory readiness",
+    id: "exam-notes",
+    system: "exam",
+    title: "Generate Notes",
+    route: "exam_prep_notes",
+    intent: "Create explanation-first teaching notes from lecture materials and course memory.",
+    primaryAction: "Build Review Plan",
+    material: "Lecture materials, recordings, readings",
+    output: "Teaching notes plan",
     decisions: [
-      decision("memory_use", "Memory use", "Choose how the course memory should be used.", [
-        "Prepare downstream context",
-        "Find source gaps",
-        "Check writing feedback",
+      decision("notes_choice", "Notes", "Choose the notes output.", [
+        "Generate full teaching notes",
+        "Generate focused revision notes",
+        "Skip notes and make report only",
       ]),
-      decision("collection_mode", "Collection mode", "Choose the next collection path.", [
-        "Authenticated browser",
-        "Official export",
-        "Local downloads",
+      decision("coverage_policy", "Coverage", "Choose the coverage target.", [
+        "Lecture-unit complete",
+        "Exam-priority only",
+        "Mixed notes plus exam report",
       ]),
     ],
   },
   {
-    id: "memory-automation",
-    system: "memory",
-    title: "Plan Memory Collection",
-    route: "automation_plan",
-    intent: "Generate an explicit collection schedule spec without silently creating automation.",
-    primaryAction: "Build Collection Plan",
-    material: "Course scope + access mode",
-    output: "Automation spec",
+    id: "exam-mcq",
+    system: "exam",
+    title: "MCQ Practice",
+    route: "mcq_preparation",
+    intent: "Prepare MCQ/SBA revision from past-paper and lecture-memory signals.",
+    primaryAction: "Build Review Plan",
+    material: "Past papers, practice sets, lecture memory",
+    output: "MCQ research report",
     decisions: [
-      decision("automation_profile", "Collection cadence", "Choose the collection cadence.", [
-        "three-day",
-        "daily",
-        "weekly",
+      decision("notes_support", "Notes support", "Choose whether to generate notes first.", [
+        "Generate notes first",
+        "MCQ report only",
+        "Ask after source review",
       ]),
-      decision("collection_scope", "Collection scope", "Choose what should be refreshed.", [
-        "Materials + timetable + announcements",
-        "Full reconciliation",
-        "Feedback only",
+      decision("mcq_focus", "Practice focus", "Choose the MCQ practice focus.", [
+        "Recurring exam points",
+        "Weak knowledge units",
+        "Full course sweep",
+      ]),
+    ],
+  },
+  {
+    id: "exam-short-answer",
+    system: "exam",
+    title: "Short Answer Prep",
+    route: "short_answer_preparation",
+    intent: "Prepare definitions, state/list answers, and concise SAQ knowledge.",
+    primaryAction: "Build Review Plan",
+    material: "Past papers, lecture memory",
+    output: "Short-answer report",
+    decisions: [
+      decision("saq_style", "Answer style", "Choose the answer style.", [
+        "Concise exam-needed points",
+        "Definitions plus examples",
+        "Lecture-order revision sheet",
+      ]),
+      decision("notes_support", "Notes support", "Choose whether notes should be included.", [
+        "Generate notes first",
+        "Report only",
+        "Use existing memory only",
+      ]),
+    ],
+  },
+  {
+    id: "exam-long-answer",
+    system: "exam",
+    title: "Long Answer / Data Prep",
+    route: "long_answer_preparation",
+    intent: "Prepare long-answer, scenario, practical, data, or past-paper walkthrough routes.",
+    primaryAction: "Build Review Plan",
+    material: "Questions, datasets, practical material",
+    output: "Long-answer report",
+    decisions: [
+      decision("question_type", "Question type", "Choose the dominant question type.", [
+        "Scenario / long answer",
+        "Data interpretation",
+        "Practical method",
+      ]),
+      decision("answer_depth", "Answer depth", "Choose how detailed the preparation should be.", [
+        "Answer structure + example answer",
+        "Knowledge map only",
+        "Full walkthrough",
+      ]),
+    ],
+  },
+  {
+    id: "exam-worked-solutions",
+    system: "exam",
+    title: "Worked Solutions",
+    route: "worked_solution_preparation",
+    intent: "Develop calculation, derivation, proof, estimate, and data/problem solutions.",
+    primaryAction: "Build Review Plan",
+    material: "Problem sheets, calculations, data questions",
+    output: "Worked-solution notes",
+    decisions: [
+      decision("solution_format", "Solution format", "Choose the worked-solution format.", [
+        "Full teaching walkthrough",
+        "Concise answer key",
+        "Assumptions and units focus",
+      ]),
+      decision("problem_scope", "Problem scope", "Choose the problem scope.", [
+        "Every extracted problem",
+        "Selected hard problems",
+        "One target question",
+      ]),
+    ],
+  },
+  {
+    id: "exam-essay",
+    system: "exam",
+    title: "Essay Exam Prep",
+    route: "essay_preparation",
+    intent: "Prepare essay-style exam answers with course detail and optional extra reading.",
+    primaryAction: "Build Review Plan",
+    material: "Essay prompts, lectures, readings",
+    output: "Essay prep report",
+    decisions: [
+      decision("essay_evidence", "Evidence depth", "Choose the evidence blend.", [
+        "Course material + extra reading",
+        "Course material only",
+        "Extra reading leads first",
+      ]),
+      decision("essay_output", "Output", "Choose the essay prep output.", [
+        "Claim plan + example paragraphs",
+        "Full model answer",
+        "Evidence map only",
+      ]),
+    ],
+  },
+  {
+    id: "exam-online-essay",
+    system: "exam",
+    title: "Online Essay Exam",
+    route: "online_essay_exam_drafting",
+    intent: "Prepare an online essay exam with explicit source-permission gates.",
+    primaryAction: "Build Review Plan",
+    material: "Lecture materials + allowed online materials",
+    output: "Evidence map + plan",
+    decisions: [
+      decision("online_permissions", "Allowed sources", "Choose the source permission boundary.", [
+        "Lecture + approved online materials",
+        "Lecture materials only",
+        "Ask before external material",
+      ]),
+      decision("draft_output", "Output", "Choose the handoff target.", [
+        "Plan first",
+        "Plan + draft",
+        "Evidence map only",
+      ]),
+    ],
+  },
+  {
+    id: "exam-question-solving",
+    system: "exam",
+    title: "Question Solving",
+    route: "question_solving",
+    intent: "Solve a target question with matching course memory and transfer practice.",
+    primaryAction: "Build Review Plan",
+    material: "Target question",
+    output: "Solution report",
+    decisions: [
+      decision("solution_depth", "Solution depth", "Choose the answer depth.", [
+        "Teach the reasoning",
+        "Concise answer",
+        "Worked solution with transfer questions",
+      ]),
+      decision("matching_scope", "Matching scope", "Choose how to find similar material.", [
+        "Strict same knowledge point",
+        "Same lecture unit",
+        "Whole course memory",
+      ]),
+    ],
+  },
+  {
+    id: "exam-question-organization",
+    system: "exam",
+    title: "Question Organization",
+    route: "question_organizing",
+    intent: "Sort past-paper and practice questions by lecture or knowledge-unit order.",
+    primaryAction: "Build Review Plan",
+    material: "Past papers, practice material, lecture order",
+    output: "Organized questions DOCX",
+    decisions: [
+      decision("organization_order", "Sort order", "Choose how questions should be ordered.", [
+        "Lecture knowledge-unit order",
+        "Past-paper year order",
+        "Difficulty order",
+      ]),
+      decision("answer_visibility", "Answer content", "Choose whether answers should be included.", [
+        "Questions only",
+        "Questions plus short tags",
+        "Questions plus answer hints",
+      ]),
+    ],
+  },
+  {
+    id: "exam-mixed",
+    system: "exam",
+    title: "Mixed Exam Prep",
+    route: "mixed_exam_preparation",
+    intent: "Confirm and prepare mixed exam components across notes, MCQ, SAQ, essay, and worked routes.",
+    primaryAction: "Build Review Plan",
+    material: "Mixed course and exam material",
+    output: "Mixed route plan",
+    decisions: [
+      decision("mixed_components", "Components", "Choose the confirmed components.", [
+        "Notes + MCQ + SAQ",
+        "Notes + essay + long answer",
+        "All detected routes",
+      ]),
+      decision("priority", "Priority", "Choose the main priority.", [
+        "Exam format coverage",
+        "Weak topics",
+        "Upcoming deadline",
+      ]),
+    ],
+  },
+  {
+    id: "cw-essay",
+    system: "coursework",
+    title: "Write an Essay / Report",
+    route: "task-type",
+    intent: "Start coursework intake for essay, report, review, or assessed academic writing.",
+    primaryAction: "Prepare Coursework Gate",
+    material: "Brief, rubric, course memory",
+    output: "Locked brief decisions",
+    decisions: [
+      decision("task_type", "Task type", "Choose the coursework type.", [
+        "Essay or report",
+        "Critical analysis",
+        "Section revision",
+      ]),
+      decision("target_output", "Target output", "Choose the next output.", [
+        "Plan first",
+        "Draft after approval",
+        "DOCX-ready package",
       ]),
     ],
   },
@@ -200,6 +396,72 @@ const tasks: Task[] = [
     ],
   },
   {
+    id: "cw-poster",
+    system: "coursework",
+    title: "Poster Plan",
+    route: "poster-plan",
+    intent: "Prepare an academic poster plan with message hierarchy and visual source roles.",
+    primaryAction: "Prepare Coursework Gate",
+    material: "Poster brief, figures, rubric",
+    output: "Poster structure",
+    decisions: [
+      decision("poster_audience", "Audience", "Choose the expected reader.", [
+        "Academic marker",
+        "Conference audience",
+        "Mixed public audience",
+      ]),
+      decision("poster_density", "Density", "Choose the content density.", [
+        "Rubric-led density",
+        "Concise visual poster",
+        "Data-heavy poster",
+      ]),
+    ],
+  },
+  {
+    id: "cw-presentation",
+    system: "coursework",
+    title: "Presentation Plan",
+    route: "presentation-plan",
+    intent: "Create a presentation storyboard, slide plan, and speaker-support gate.",
+    primaryAction: "Prepare Coursework Gate",
+    material: "Presentation brief, timing, rubric",
+    output: "Storyboard",
+    decisions: [
+      decision("presentation_timing", "Timing", "Choose the pacing target.", [
+        "Use assignment timing",
+        "Concise assessed talk",
+        "User-specified timing",
+      ]),
+      decision("speaker_notes", "Speaker notes", "Choose the delivery support.", [
+        "Slides and notes",
+        "Slides only",
+        "Script first",
+      ]),
+    ],
+  },
+  {
+    id: "cw-figure",
+    system: "coursework",
+    title: "Figure / Legend Plan",
+    route: "figure-plan",
+    intent: "Plan source-backed figures, captions, legends, and generation handoff.",
+    primaryAction: "Prepare Coursework Gate",
+    material: "Data, source image, figure brief",
+    output: "Figure packet",
+    decisions: [
+      decision("figure_goal", "Figure goal", "Choose what the figure must do.", [
+        "Explain mechanism",
+        "Show result",
+        "Compare conditions",
+      ]),
+      decision("figure_output", "Figure output", "Choose the figure handoff.", [
+        "Generation plan",
+        "Legend contract",
+        "QA checklist",
+      ]),
+    ],
+  },
+  {
     id: "cw-section",
     system: "coursework",
     title: "Section Review",
@@ -222,68 +484,68 @@ const tasks: Task[] = [
     ],
   },
   {
-    id: "exam-notes",
-    system: "exam",
-    title: "Notes + Review Plan",
-    route: "exam_prep_notes",
-    intent: "Build lecture-unit complete notes and review questions from course memory.",
-    primaryAction: "Build Review Plan",
-    material: "Lecture memory",
-    output: "Notes plan + review questions",
+    id: "cw-critical-analysis",
+    system: "coursework",
+    title: "Critical Analysis",
+    route: "critical-analysis",
+    intent: "Build a critical-analysis stance, limitations, synthesis, and evaluation plan.",
+    primaryAction: "Prepare Coursework Gate",
+    material: "Brief, readings, draft argument",
+    output: "Critical-analysis gate",
     decisions: [
-      decision("notes_choice", "Notes", "Choose how notes should be generated.", [
-        "Generate full teaching notes",
-        "Generate focused revision notes",
-        "Skip notes and make report only",
+      decision("critical_stance", "Critical stance", "Choose the dominant critical move.", [
+        "Evaluate evidence quality",
+        "Compare theories or mechanisms",
+        "Expose limitations and implications",
       ]),
-      decision("exam_route", "Exam type", "Choose the exam route.", [
-        "Mixed route",
-        "MCQ",
-        "Short Answer",
+      decision("analysis_depth", "Depth", "Choose the critical-analysis depth.", [
+        "Discussion-level critique",
+        "Paragraph-level integration",
+        "High-level plan only",
       ]),
     ],
   },
   {
-    id: "exam-essay",
-    system: "exam",
-    title: "Online Essay Exam",
-    route: "online_essay_exam_drafting",
-    intent: "Prepare an online essay exam with permission and memory-source gates.",
-    primaryAction: "Build Review Plan",
-    material: "Lecture materials + online materials",
-    output: "Evidence map + plan",
+    id: "cw-planning-approval",
+    system: "coursework",
+    title: "Approve Coursework Plan",
+    route: "planning-approval",
+    intent: "Review a visible coursework plan and choose what to include, condense, or exclude.",
+    primaryAction: "Prepare Coursework Gate",
+    material: "Visible plan",
+    output: "Planning approval",
     decisions: [
-      decision("online_permissions", "Allowed sources", "Choose the source permission boundary.", [
-        "Lecture + approved online materials",
-        "Lecture materials only",
-        "Ask before external material",
+      decision("approval_action", "Plan decision", "Choose the planning decision.", [
+        "Approve and continue",
+        "Revise structure first",
+        "Change evidence or scope",
       ]),
-      decision("draft_output", "Output", "Choose the handoff target.", [
-        "Plan first",
-        "Plan + draft",
-        "Evidence map only",
+      decision("revision_focus", "Revision focus", "Choose the plan revision focus.", [
+        "Include more evidence",
+        "Condense sections",
+        "Exclude off-brief material",
       ]),
     ],
   },
   {
-    id: "exam-solver",
-    system: "exam",
-    title: "Question Solving",
-    route: "question_solving",
-    intent: "Solve a target question with matching course memory and transfer practice.",
-    primaryAction: "Build Review Plan",
-    material: "Target question",
-    output: "Solution report",
+    id: "cw-writing-gate",
+    system: "coursework",
+    title: "Writing Gate",
+    route: "writing-gate",
+    intent: "Resolve plan-breaking writing decisions before drafting or revising.",
+    primaryAction: "Prepare Coursework Gate",
+    material: "Locked brief, plan, evidence map",
+    output: "Writing decision gate",
     decisions: [
-      decision("solution_depth", "Solution depth", "Choose the answer depth.", [
-        "Teach the reasoning",
-        "Concise answer",
-        "Worked solution with transfer questions",
+      decision("writing_action", "Writing action", "Choose the next writing action.", [
+        "Start drafting",
+        "Revise existing draft",
+        "Pause for missing evidence",
       ]),
-      decision("matching_scope", "Matching scope", "Choose how to find similar material.", [
-        "Strict same knowledge point",
-        "Same lecture unit",
-        "Whole course memory",
+      decision("output_format", "Output format", "Choose the working output format.", [
+        "Chat draft",
+        "DOCX draft",
+        "Section-by-section plan",
       ]),
     ],
   },
@@ -295,14 +557,14 @@ function decision(id: string, title: string, prompt: string, options: string[]):
 
 function App() {
   const [activeSection, setActiveSection] = React.useState<SectionId>("workspace");
-  const [system, setSystem] = React.useState<SystemId>("memory");
-  const [selectedTaskId, setSelectedTaskId] = React.useState("memory-context");
-  const [course, setCourse] = React.useState("BIO101");
-  const [prompt, setPrompt] = React.useState("Prepare this course using stored materials, feedback, and source roles.");
+  const [system, setSystem] = React.useState<SystemId>("exam");
+  const [selectedTaskId, setSelectedTaskId] = React.useState("exam-notes");
+  const [course, setCourse] = React.useState("");
+  const [prompt, setPrompt] = React.useState("");
   const [bridge, setBridge] = React.useState<BridgeState>("checking");
   const [codex, setCodex] = React.useState<CodexState>({ state: "checking", available: false, authenticated: false });
   const [outputState, setOutputState] = React.useState<OutputState>("Idle");
-  const [memory, setMemory] = React.useState<MemoryContext>(fallbackMemory("BIO101"));
+  const [memory, setMemory] = React.useState<MemoryContext>(fallbackMemory(""));
   const [decisions, setDecisions] = React.useState<Record<string, string>>({});
   const [sourceRoles, setSourceRoles] = React.useState<Record<string, boolean>>({
     lecture_materials: true,
@@ -403,32 +665,6 @@ function App() {
     setBusy(true);
     const memoryContext = memory.course === course ? memory : fallbackMemory(course);
     try {
-      if (selectedTask.system === "memory") {
-        if (selectedTask.route === "automation_plan") {
-          const profile = decisions.automation_profile || "three-day";
-          const stores =
-            decisions.collection_scope === "Full reconciliation"
-              ? ["full_reconciliation"]
-              : decisions.collection_scope === "Feedback only"
-                ? ["feedback"]
-                : ["materials", "announcements", "timetable"];
-          const plan = await fetchJson(`${bridgeUrl}/api/university/automation/plan`, {
-            method: "POST",
-            body: JSON.stringify({
-              profile,
-              courseScope: `${course} only`,
-              allowedAccessModes: ["authenticated_browser", "official_export"],
-              stores,
-            }),
-          });
-          setOutputState("Automation plan ready");
-          setOutputs(["Collection plan ready", `${plan.name ?? "Automation spec"} generated for ${course}`]);
-          setAdvancedExport(plan.prompt ?? JSON.stringify(plan, null, 2));
-        } else {
-          await refreshMemory(false);
-        }
-      }
-
       if (selectedTask.system === "coursework") {
         const payload = await fetchJson(`${bridgeUrl}/api/coursework/payload`, {
           method: "POST",
@@ -475,6 +711,30 @@ function App() {
       setOutputState("Offline handoff");
       setOutputs(["Offline handoff ready", "The bridge is unavailable, but the selected task and memory intent are preserved"]);
       setAdvancedExport(offlinePacket.codex_prompt);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function buildCollectionPlan() {
+    setBusy(true);
+    try {
+      const plan = await fetchJson(`${bridgeUrl}/api/university/automation/plan`, {
+        method: "POST",
+        body: JSON.stringify({
+          profile: "three-day",
+          courseScope: course ? `${course} only` : "all configured courses",
+          allowedAccessModes: ["authenticated_browser", "official_export"],
+          stores: ["materials", "announcements", "timetable"],
+        }),
+      });
+      setOutputState("Automation plan ready");
+      setOutputs(["Collection plan ready", `${plan.name ?? "Automation spec"} generated`]);
+      setAdvancedExport(plan.prompt ?? JSON.stringify(plan, null, 2));
+    } catch {
+      setBridge("offline");
+      setOutputState("Offline handoff");
+      setOutputs(["Collection plan needs the local bridge", "Settings still preserve the selected memory scope"]);
     } finally {
       setBusy(false);
     }
@@ -567,9 +827,7 @@ function App() {
               outputs={outputs}
               busy={busy}
               onPrimary={runPrimaryAction}
-              onRefreshMemory={() => refreshMemory(true)}
               onRunCodex={runWithCodex}
-              memory={memory}
             />
           )}
           {activeSection === "sources" && (
@@ -581,10 +839,24 @@ function App() {
             />
           )}
           {activeSection === "settings" && (
-            <SettingsView bridgeUrl={bridgeUrl} bridge={bridge} codex={codex} onCheck={checkBridge} onConnect={connectCodex} />
+            <SettingsView
+              bridgeUrl={bridgeUrl}
+              bridge={bridge}
+              codex={codex}
+              course={course}
+              setCourse={setCourse}
+              memory={memory}
+              busy={busy}
+              onCheck={checkBridge}
+              onConnect={connectCodex}
+              onRefreshMemory={() => refreshMemory(true)}
+              onBuildCollectionPlan={buildCollectionPlan}
+            />
           )}
         </main>
         <Inspector
+          task={selectedTask}
+          course={course}
           memory={memory}
           bridge={bridge}
           codex={codex}
@@ -670,28 +942,30 @@ function LeftRail({
           <GraduationCap aria-hidden="true" />
         </div>
         <label className="field-label" htmlFor="course-code">
-          Course code
+          Course / module
         </label>
-        <input id="course-code" className="text-input" value={course} onChange={(event) => setCourse(event.target.value)} />
+        <input
+          id="course-code"
+          className="text-input"
+          value={course}
+          placeholder="Optional"
+          onChange={(event) => setCourse(event.target.value)}
+        />
       </section>
 
       <section>
         <div className="rail-title">
-          <span>System</span>
+          <span>Task family</span>
           <Layers3 aria-hidden="true" />
         </div>
         <div className="system-stack">
-          <button className={system === "memory" ? "selected" : ""} onClick={() => setSystem("memory")}>
-            <Database aria-hidden="true" />
-            <span>Memory Collection</span>
+          <button className={system === "exam" ? "selected" : ""} onClick={() => setSystem("exam")}>
+            <BookOpen aria-hidden="true" />
+            <span>Exam Prep</span>
           </button>
           <button className={system === "coursework" ? "selected" : ""} onClick={() => setSystem("coursework")}>
             <FileText aria-hidden="true" />
             <span>Coursework</span>
-          </button>
-          <button className={system === "exam" ? "selected" : ""} onClick={() => setSystem("exam")}>
-            <BookOpen aria-hidden="true" />
-            <span>Exam Prep</span>
           </button>
         </div>
       </section>
@@ -730,9 +1004,7 @@ function TaskWorkspace({
   outputs,
   busy,
   onPrimary,
-  onRefreshMemory,
   onRunCodex,
-  memory,
 }: {
   task: Task;
   course: string;
@@ -746,36 +1018,21 @@ function TaskWorkspace({
   outputs: string[];
   busy: boolean;
   onPrimary: () => void;
-  onRefreshMemory: () => void;
   onRunCodex: () => void;
-  memory: MemoryContext;
 }) {
   return (
     <div className="workspace-inner">
       <section className="command-header">
         <div>
-          <h1>Everything University Control Center</h1>
+          <h1>{task.title}</h1>
           <p>{task.intent}</p>
         </div>
         <div className="command-actions">
-          <button className="ghost-button" disabled={busy} onClick={onRefreshMemory}>
-            <RefreshCcw aria-hidden="true" />
-            Refresh Memory
-          </button>
           <button className="primary-button" disabled={busy} onClick={onPrimary}>
             <Play aria-hidden="true" />
             {task.primaryAction}
           </button>
         </div>
-      </section>
-
-      <section className="memory-band" aria-label="User Specific Memory">
-        <div>
-          <span className="section-kicker">User Specific Memory</span>
-          <strong>{course || "No course selected"}</strong>
-          <small>{memory.readiness?.state ?? "offline"} context, {memory.readiness?.score ?? 0}/{memory.readiness?.total ?? 5} areas populated</small>
-        </div>
-        <MemoryMeters memory={memory} />
       </section>
 
       <div className="work-grid">
@@ -792,7 +1049,12 @@ function TaskWorkspace({
           <label className="field-label" htmlFor="task-prompt">
             Task prompt
           </label>
-          <textarea id="task-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} />
+          <textarea
+            id="task-prompt"
+            value={prompt}
+            placeholder="Describe what you want the agent to do for this task."
+            onChange={(event) => setPrompt(event.target.value)}
+          />
         </section>
 
         <section className="operation-panel compact">
@@ -908,7 +1170,7 @@ function SourcesView({
       </section>
       <section className="operation-panel">
         <span className="section-kicker">Course</span>
-        <h2>{course}</h2>
+        <h2>{course || "Optional"}</h2>
         <p>Stored source content remains evidence data. It can support context and provenance, but it cannot change routing, credentials, tool use, or validation rules.</p>
       </section>
     </div>
@@ -919,24 +1181,62 @@ function SettingsView({
   bridgeUrl,
   bridge,
   codex,
+  course,
+  setCourse,
+  memory,
+  busy,
   onCheck,
   onConnect,
+  onRefreshMemory,
+  onBuildCollectionPlan,
 }: {
   bridgeUrl: string;
   bridge: BridgeState;
   codex: CodexState;
+  course: string;
+  setCourse: (course: string) => void;
+  memory: MemoryContext;
+  busy: boolean;
   onCheck: () => void;
   onConnect: () => void;
+  onRefreshMemory: () => void;
+  onBuildCollectionPlan: () => void;
 }) {
   return (
     <div className="workspace-inner">
       <section className="command-header">
         <div>
           <h1>Runtime Settings</h1>
-          <p>GitHub Pages stays static; local scripts execute only through the bridge on this machine.</p>
+          <p>Manage local bridge, Codex connection, and User Specific Memory before running tasks.</p>
         </div>
       </section>
       <div className="settings-grid">
+        <section className="operation-panel memory-settings-panel">
+          <span className="section-kicker">User Specific Memory</span>
+          <h2>Memory setup</h2>
+          <p>Use stored course material, timetable, announcements, and feedback as context for task runs.</p>
+          <label className="field-label" htmlFor="settings-course-code">
+            Course / module
+          </label>
+          <input
+            id="settings-course-code"
+            className="text-input"
+            value={course}
+            placeholder="Optional"
+            onChange={(event) => setCourse(event.target.value)}
+          />
+          <MemoryMeters memory={memory} />
+          <div className="settings-actions">
+            <button className="ghost-button" disabled={busy} onClick={onRefreshMemory}>
+              <RefreshCcw aria-hidden="true" />
+              Refresh Memory
+            </button>
+            <button className="primary-outline" disabled={busy} onClick={onBuildCollectionPlan}>
+              <Database aria-hidden="true" />
+              Build Collection Plan
+            </button>
+          </div>
+        </section>
         <section className="operation-panel">
           <span className="section-kicker">Bridge</span>
           <h2>{bridgeLabel(bridge)}</h2>
@@ -962,6 +1262,8 @@ function SettingsView({
 }
 
 function Inspector({
+  task,
+  course,
   memory,
   bridge,
   codex,
@@ -971,6 +1273,8 @@ function Inspector({
   setAdvancedOpen,
   advancedExport,
 }: {
+  task: Task;
+  course: string;
   memory: MemoryContext;
   bridge: BridgeState;
   codex: CodexState;
@@ -992,11 +1296,11 @@ function Inspector({
       </section>
 
       <section>
-        <h3>User Specific Memory</h3>
-        <InfoPair label="Course" value={memory.course ?? "No course"} />
-        <InfoPair label="Readiness" value={`${memory.readiness?.score ?? 0}/${memory.readiness?.total ?? 5}`} />
-        <InfoPair label="Institution" value={memory.summary?.student?.institution || "Not set"} />
-        <InfoPair label="Program" value={memory.summary?.student?.program || "Not set"} />
+        <h3>Selected task</h3>
+        <InfoPair label="Task" value={task.title} />
+        <InfoPair label="Family" value={task.system === "exam" ? "Exam Prep" : "Coursework"} />
+        <InfoPair label="Course" value={course || "Optional"} />
+        <InfoPair label="Memory" value={`${memory.readiness?.score ?? 0}/${memory.readiness?.total ?? 5}`} />
       </section>
 
       <section>
@@ -1094,7 +1398,7 @@ async function fetchJson(url: string, init?: RequestInit) {
 
 function fallbackMemory(course: string): MemoryContext {
   return {
-    course,
+    course: course || undefined,
     readiness: {
       score: 0,
       total: 5,

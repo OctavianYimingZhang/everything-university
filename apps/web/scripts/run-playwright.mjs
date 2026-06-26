@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 
-const port = process.env.E2E_PORT || "5190";
+const port = process.env.E2E_PORT || "5290";
 const baseUrl = `http://127.0.0.1:${port}/everything-university/`;
 
 function run(command, args, options = {}) {

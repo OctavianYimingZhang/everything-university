@@ -456,6 +456,17 @@ textarea {
   gap: 18px;
 }
 
+.memory-settings-panel {
+  grid-column: 1 / -1;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
 .operation-panel,
 .decision-panel,
 .output-panel,

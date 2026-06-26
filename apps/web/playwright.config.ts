@@ -7,7 +7,7 @@ export default defineConfig({
     timeout: 8_000,
   },
   use: {
-    baseURL: process.env.E2E_BASE_URL || "http://127.0.0.1:5190/everything-university/",
+    baseURL: process.env.E2E_BASE_URL || "http://127.0.0.1:5290/everything-university/",
     trace: "on-first-retry",
   },
   projects: [

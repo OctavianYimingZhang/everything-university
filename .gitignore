@@ -2,3 +2,11 @@
 *.log
 __pycache__/
 .DS_Store
+node_modules/
+apps/*/node_modules/
+apps/web/dist/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/bridge/.venv/
+.pytest_cache/
+.npm-cache/

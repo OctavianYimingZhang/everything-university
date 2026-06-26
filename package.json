@@ -1,0 +1,18 @@
+{
+  "name": "everything-university",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Everything University Skill plus hosted control center.",
+  "scripts": {
+    "web:dev": "npm --prefix apps/web run dev",
+    "bridge:dev": "if [ -x apps/bridge/.venv/bin/uvicorn ]; then apps/bridge/.venv/bin/uvicorn app:app --app-dir apps/bridge --host 127.0.0.1 --port 8787; else python3 -m uvicorn app:app --app-dir apps/bridge --host 127.0.0.1 --port 8787; fi",
+    "web:build": "npm --prefix apps/web run build",
+    "web:test": "npm --prefix apps/web run test",
+    "bridge:test": "if [ -x apps/bridge/.venv/bin/python ]; then apps/bridge/.venv/bin/python -m pytest apps/bridge; else python3 -m pytest apps/bridge; fi",
+    "validate": "python3 scripts/validate_everything_university.py",
+    "test": "npm run web:build && npm run web:test && npm run bridge:test && npm run validate"
+  },
+  "workspaces": [
+    "apps/web"
+  ]
+}

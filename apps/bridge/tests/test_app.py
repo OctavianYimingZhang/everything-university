@@ -149,6 +149,38 @@ def test_exam_plan_and_review_fixture() -> None:
     assert "questions" in review_response.json() or "batches" in review_response.json()
 
 
+def test_ai_questions_fallback_without_openai_key(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    response = client.post(
+        "/api/ai/questions",
+        json={
+            "selectedSystem": "exam",
+            "selectedRoute": "exam_prep_notes",
+            "taskTitle": "Generate Notes",
+            "taskIntent": "Create explanation-first teaching notes.",
+            "course": "BIO101",
+            "prompt": "make notes from lecture 1",
+            "sourceRoles": {"lecture_materials": True},
+            "memoryContext": {"readiness": {"source_gaps": ["transcripts"]}, "stores": {}},
+            "currentAnswers": {},
+            "defaultQuestions": [
+                {
+                    "id": "notes_choice",
+                    "title": "Notes",
+                    "prompt": "Choose the notes output.",
+                    "options": ["Generate full teaching notes", "Generate focused revision notes"],
+                    "recommended": "Generate full teaching notes",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["mode"] == "fallback"
+    assert payload["questions"]
+    assert "OPENAI_API_KEY" in payload["assistant_message"]
+
+
 def test_run_context_and_codex_handoff_shape(monkeypatch) -> None:
     monkeypatch.setattr(bridge_app, "codex_status", lambda: {"available": False, "authenticated": False, "state": "missing_cli"})
     packet = {

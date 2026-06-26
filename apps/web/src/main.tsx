@@ -11,8 +11,10 @@ import {
   GraduationCap,
   KeyRound,
   Layers3,
+  MessageSquare,
   Play,
   RefreshCcw,
+  Send,
   Server,
   ShieldCheck,
   Sparkles,
@@ -41,6 +43,29 @@ type Decision = {
   prompt: string;
   options: string[];
   recommended: string;
+};
+
+type GeneratedQuestion = {
+  id: string;
+  title: string;
+  prompt: string;
+  options: string[];
+  recommended?: string;
+  decisionId?: string;
+};
+
+type ChatMessage = {
+  id: string;
+  role: "assistant" | "user";
+  text: string;
+  questions?: GeneratedQuestion[];
+  mode?: "ai" | "fallback";
+};
+
+type AIQuestionsResponse = {
+  mode?: "ai" | "fallback";
+  assistant_message?: string;
+  questions?: GeneratedQuestion[];
 };
 
 type Task = {
@@ -1066,6 +1091,8 @@ function App() {
               setPrompt={setPrompt}
               decisions={decisions}
               setDecision={(id, value) => setDecisions((current) => ({ ...current, [id]: value }))}
+              sourceRoles={sourceRoles}
+              memory={memory}
               outputState={outputState}
               outputs={outputs}
               busy={busy}
@@ -1257,6 +1284,8 @@ function TaskWorkspace({
   setPrompt,
   decisions,
   setDecision,
+  sourceRoles,
+  memory,
   outputState,
   outputs,
   busy,
@@ -1269,12 +1298,91 @@ function TaskWorkspace({
   setPrompt: (prompt: string) => void;
   decisions: Record<string, string>;
   setDecision: (id: string, value: string) => void;
+  sourceRoles: Record<string, boolean>;
+  memory: MemoryContext;
   outputState: OutputState;
   outputs: string[];
   busy: boolean;
   onPrimary: () => void;
   onRunCodex: () => void;
 }) {
+  const [draft, setDraft] = React.useState("");
+  const [messages, setMessages] = React.useState<ChatMessage[]>(() => initialChatMessages(task));
+  const [questionBusy, setQuestionBusy] = React.useState(false);
+
+  React.useEffect(() => {
+    setDraft("");
+    setMessages(initialChatMessages(task));
+  }, [task.id]);
+
+  async function generateQuestions() {
+    const userText = draft.trim();
+    const combinedPrompt = userText ? [prompt.trim(), userText].filter(Boolean).join("\n\n") : prompt.trim();
+    if (userText) {
+      setPrompt(combinedPrompt);
+      setMessages((current) => [
+        ...current,
+        {
+          id: createId("user"),
+          role: "user",
+          text: userText,
+        },
+      ]);
+      setDraft("");
+    }
+
+    setQuestionBusy(true);
+    try {
+      const response = (await fetchJson(`${bridgeUrl}/api/ai/questions`, {
+        method: "POST",
+        body: JSON.stringify({
+          selectedSystem: task.system,
+          selectedRoute: task.route,
+          taskTitle: task.title,
+          taskIntent: task.intent,
+          course,
+          prompt: combinedPrompt || userText || task.intent,
+          sourceRoles,
+          memoryContext: memory,
+          currentAnswers: decisions,
+          defaultQuestions: task.decisions,
+          conversation: messages.slice(-6).map((message) => ({ role: message.role, text: message.text })),
+        }),
+      })) as AIQuestionsResponse;
+      applyGeneratedQuestions(response);
+    } catch {
+      applyGeneratedQuestions(browserFallbackQuestions(task, memory, combinedPrompt || userText));
+    } finally {
+      setQuestionBusy(false);
+    }
+  }
+
+  function applyGeneratedQuestions(response: AIQuestionsResponse) {
+    const questions = normalizeGeneratedQuestions(response.questions ?? []);
+    questions.forEach((question) => {
+      const id = question.decisionId ?? question.id;
+      if (!decisions[id] && question.recommended) {
+        setDecision(id, question.recommended);
+      }
+    });
+    setMessages((current) => [
+      ...current,
+      {
+        id: createId("assistant"),
+        role: "assistant",
+        mode: response.mode ?? "fallback",
+        text:
+          response.assistant_message ??
+          "Answer these questions so the run can use the right materials, output shape, and memory context.",
+        questions,
+      },
+    ]);
+  }
+
+  function selectOption(question: GeneratedQuestion, option: string) {
+    setDecision(question.decisionId ?? question.id, option);
+  }
+
   return (
     <div className="workspace-inner">
       <section className="command-header">
@@ -1290,86 +1398,112 @@ function TaskWorkspace({
         </div>
       </section>
 
-      <div className="work-grid single-panel">
-        <section className="operation-panel">
-          <div className="panel-heading">
-            <span className="section-kicker">Current Operation</span>
-            <StatusPill state={statusToPill(outputState)} label={outputState} />
-          </div>
-          <div className="operation-meta">
-            <InfoPair label="Task" value={task.title} />
-            <InfoPair label="Materials" value={task.material} />
-            <InfoPair label="Output" value={task.output} />
-          </div>
-          <label className="field-label" htmlFor="task-prompt">
-            Task prompt
-          </label>
-          <textarea
-            id="task-prompt"
-            value={prompt}
-            placeholder="Describe what you want the agent to do for this task."
-            onChange={(event) => setPrompt(event.target.value)}
-          />
-          <div className="operation-note">
-            <ShieldCheck aria-hidden="true" />
-            <span>Upload and inspect lecture slides, transcripts, assignments, and readings from the Sources page.</span>
-          </div>
-        </section>
-      </div>
-
-      <section className="decision-panel">
-        <div className="panel-heading">
+      <section className="chat-panel" aria-label="Task conversation">
+        <div className="chat-panel-head">
           <div>
-            <span className="section-kicker">Required decisions</span>
-            <h2>{task.title}</h2>
+            <span className="section-kicker">Live task intake</span>
+            <h2>Answer AI questions</h2>
           </div>
+          <StatusPill state={statusToPill(questionBusy ? "Refreshing memory" : outputState)} label={questionBusy ? "Generating questions" : outputState} />
         </div>
-        <div className="decision-grid">
-          {task.decisions.map((item) => (
-            <DecisionCard key={item.id} decision={item} value={decisions[item.id] ?? item.recommended} onChange={(value) => setDecision(item.id, value)} />
+
+        <div className="task-context-strip">
+          <span>{familyLabel(task.system)}</span>
+          <span>{task.material}</span>
+          <span>{task.output}</span>
+        </div>
+
+        <div className="chat-stream" aria-live="polite">
+          {messages.map((message) => (
+            <ChatMessageView key={message.id} message={message} decisions={decisions} onSelectOption={selectOption} />
           ))}
         </div>
-      </section>
 
-      <section className="output-panel">
-        <div className="panel-heading">
-          <div>
-            <span className="section-kicker">Outputs</span>
-            <h2>Run status</h2>
+        <div className="run-footer">
+          <div className="output-list compact-output">
+            {outputs.slice(0, 3).map((output) => (
+              <div className="output-row" key={output}>
+                <CheckCircle2 aria-hidden="true" />
+                <span>{output}</span>
+              </div>
+            ))}
           </div>
-          <button className="primary-outline" disabled={busy} onClick={onRunCodex}>
+          <button className="primary-outline" disabled={busy || questionBusy} onClick={onRunCodex}>
             <Sparkles aria-hidden="true" />
             Run with Codex
           </button>
         </div>
-        <div className="output-list">
-          {outputs.map((output) => (
-            <div className="output-row" key={output}>
-              <CheckCircle2 aria-hidden="true" />
-              <span>{output}</span>
-            </div>
-          ))}
+
+        <div className="chat-composer">
+          <MessageSquare aria-hidden="true" />
+          <textarea
+            aria-label="Message to agent"
+            value={draft}
+            placeholder="Describe the task, paste the question, or ask what the agent needs before running."
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                void generateQuestions();
+              }
+            }}
+          />
+          <div className="chat-composer-actions">
+            <button className="ghost-button" disabled={busy || questionBusy} onClick={generateQuestions}>
+              <Send aria-hidden="true" />
+              Generate Questions
+            </button>
+          </div>
+        </div>
+        <div className="operation-note chat-note">
+          <ShieldCheck aria-hidden="true" />
+          <span>Upload lecture slides, transcripts, assignments, and readings from the Sources page before relying on source-grounded answers.</span>
         </div>
       </section>
     </div>
   );
 }
 
-function DecisionCard({ decision, value, onChange }: { decision: Decision; value: string; onChange: (value: string) => void }) {
+function ChatMessageView({
+  message,
+  decisions,
+  onSelectOption,
+}: {
+  message: ChatMessage;
+  decisions: Record<string, string>;
+  onSelectOption: (question: GeneratedQuestion, option: string) => void;
+}) {
   return (
-    <div className="decision-card">
-      <div>
-        <h3>{decision.title}</h3>
-        <p>{decision.prompt}</p>
+    <article className={`chat-message ${message.role}`}>
+      <div className="chat-avatar" aria-hidden="true">
+        {message.role === "assistant" ? <Sparkles /> : <GraduationCap />}
       </div>
-      <div className="choice-stack">
-        {decision.options.map((option) => (
-          <button key={option} className={value === option ? "choice selected" : "choice"} onClick={() => onChange(option)}>
-            <span>{option}</span>
-          </button>
-        ))}
+      <div className="chat-bubble">
+        <p>{message.text}</p>
+        {message.questions?.length ? (
+          <div className="question-stack">
+            <span className="question-mode">{message.mode === "ai" ? "AI-generated questions" : "Bridge fallback questions"}</span>
+            {message.questions.map((question) => {
+              const selected = decisions[question.decisionId ?? question.id] ?? "";
+              return (
+                <div className="question-card" key={question.id}>
+                  <div>
+                    <h3>{question.title}</h3>
+                    <p>{question.prompt}</p>
+                  </div>
+                  <div className="question-options">
+                    {question.options.map((option) => (
+                      <button key={option} className={selected === option ? "choice selected" : "choice"} onClick={() => onSelectOption(question, option)}>
+                        <span>{option}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -1758,6 +1892,83 @@ function StatusPill({ state, label }: { state: "connected" | "pending" | "warn";
 
 function seedDecisions(task: Task): Record<string, string> {
   return Object.fromEntries(task.decisions.map((item) => [item.id, item.recommended]));
+}
+
+function initialChatMessages(task: Task): ChatMessage[] {
+  return [
+    {
+      id: createId("assistant"),
+      role: "assistant",
+      text:
+        `You selected ${task.title}. Tell me the concrete task, then generate questions so the agent can decide what to ask before running.`,
+    },
+  ];
+}
+
+function createId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeGeneratedQuestions(questions: GeneratedQuestion[]) {
+  return questions
+    .map((question, index) => {
+      const options = Array.isArray(question.options)
+        ? question.options.map((option) => String(option).trim()).filter(Boolean).slice(0, 4)
+        : [];
+      return {
+        id: safeQuestionId(question.id || question.decisionId || `question_${index + 1}`),
+        title: String(question.title || `Question ${index + 1}`).trim(),
+        prompt: String(question.prompt || "Choose the best option before running.").trim(),
+        options: options.length ? options : ["Use best judgment", "Ask me first", "Use memory only"],
+        recommended: question.recommended ? String(question.recommended) : options[0],
+        decisionId: question.decisionId ? safeQuestionId(question.decisionId) : undefined,
+      };
+    })
+    .slice(0, 6);
+}
+
+function safeQuestionId(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || createId("question");
+}
+
+function browserFallbackQuestions(task: Task, memory: MemoryContext, prompt: string): AIQuestionsResponse {
+  const gaps = memory.readiness?.source_gaps ?? memory.summary?.missing_stores ?? [];
+  const questions: GeneratedQuestion[] = [
+    {
+      id: `${task.id}_target`,
+      title: "Target outcome",
+      prompt: `What should ${task.title} produce for this run?`,
+      options: [task.output, "Plan first", "Ask me for missing details"],
+      recommended: task.output,
+    },
+    {
+      id: `${task.id}_source_boundary`,
+      title: "Source boundary",
+      prompt: gaps.length
+        ? `Memory is missing ${gaps.slice(0, 3).join(", ")}. How should the agent handle source gaps?`
+        : "How should the agent use the available course memory and uploaded sources?",
+      options: ["Use available memory and flag gaps", "Ask before continuing", "Use uploaded sources only"],
+      recommended: "Use available memory and flag gaps",
+    },
+  ];
+  const routeQuestion = task.decisions[0];
+  if (routeQuestion) {
+    questions.push({
+      id: `${task.id}_${routeQuestion.id}`,
+      decisionId: routeQuestion.id,
+      title: routeQuestion.title,
+      prompt: routeQuestion.prompt,
+      options: routeQuestion.options,
+      recommended: routeQuestion.recommended,
+    });
+  }
+  return {
+    mode: "fallback",
+    assistant_message: prompt
+      ? "The bridge is offline, so I generated local intake questions from the selected task and memory readiness."
+      : "The bridge is offline. Add task detail, then answer these local intake questions before running.",
+    questions,
+  };
 }
 
 async function fetchJson(url: string, init?: RequestInit) {
